@@ -1,0 +1,184 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover"/>
+<meta name="description" content="Incrementally grow a tree as each node is expanded for the first time."/>
+<link rel="stylesheet" href="{% static 'GenIncrTree/css/style.css' %}"/>
+<title>Incremental Tree</title>
+</head>
+
+<body>
+    <!-- Contenu de result.html, sans les lignes liées à Bootstrap -->
+<div class="h-screen flex flex-col md:flex-row w-full max-w-screen-xl mx-auto">
+    <div id="navSide" class="flex flex-col w-full md:w-48 text-gray-700 bg-white flex-shrink-0">
+      {% include 'GenIncrTree/sidebar.html' %}
+    </div>
+    <!-- * * * * * * * * * * * * * -->
+    <!-- Start of GoJS sample code -->
+
+    <script src="{% static 'GenIncrTree/js/go.js' %}"></script>
+    <div id="allSampleContent" class="p-4 w-full flex flex-col flex-grow">
+      <div id="sample" class="relative flex-grow">
+        <div id="myDiagramDiv" class="absolute inset-0 bg-white"></div>
+      </div>
+    </div>
+    <!-- * * * * * * * * * * * * * -->
+    <!--  End of GoJS sample code  -->
+  </div>
+
+  <script src="{% static 'GenIncrTree/js/goSamples.js' %}"></script>
+  <script id="code">
+        function init() {
+
+      // Since 2.2 you can also author concise templates with method chaining instead of GraphObject.make
+      // For details, see https://gojs.net/latest/intro/buildingObjects.html
+      const $ = go.GraphObject.make;  // for conciseness in defining templates
+
+      var blues = ['#E1F5FE', '#B3E5FC', '#81D4FA', '#4FC3F7', '#29B6F6', '#03A9F4', '#039BE5', '#0288D1', '#0277BD', '#01579B'];
+
+      myDiagram =
+        $(go.Diagram, "myDiagramDiv",  // must name or refer to the DIV HTML element
+          {
+            initialContentAlignment: go.Spot.Center,
+            layout: $(go.ForceDirectedLayout),
+            // moving and copying nodes also moves and copies their subtrees
+            "commandHandler.copiesTree": true,  // for the copy command
+            "commandHandler.deletesTree": true, // for the delete command
+            "draggingTool.dragsTree": true,  // dragging for both move and copy
+            "undoManager.isEnabled": true
+          });
+
+      // Define the Node template.
+      // This uses a Spot Panel to position a button relative
+      // to the ellipse surrounding the text.
+      myDiagram.nodeTemplate =
+        $(go.Node, "Spot",
+          {
+            selectionObjectName: "PANEL",
+            isTreeExpanded: false,
+            isTreeLeaf: false
+          },
+          // the node's outer shape, which will surround the text
+          $(go.Panel, "Auto",
+            { name: "PANEL" },
+            $(go.Shape, "RoundedRectangle", // Change "Circle" to "RoundedRectangle"
+              {
+                fill: "whitesmoke",
+                stroke: "black",
+                strokeWidth: 2, // Add a stroke width
+                spot1: new go.Spot(0, 0, 5, 5), // Add some padding
+                spot2: new go.Spot(1, 1, -5, -5) // Add some padding
+              },
+              new go.Binding("fill", "rootdistance", dist => {
+                dist = Math.min(blues.length - 1, dist);
+                return blues[dist];
+              })),
+$(go.TextBlock,
+  {
+    font: "12pt sans-serif",
+    margin: new go.Margin(10, 10, 10, 10), // Modifiez cette ligne pour ajouter du padding autour du texte
+    textAlign: "center", // Ajoutez cette ligne pour centrer le texte
+    wrap: go.TextBlock.WrapFit,
+    maxSize: new go.Size(180, NaN)
+  },
+  new go.Binding("text", "text"))
+          ),
+          // the expand/collapse button, at the top-right corner
+          $("TreeExpanderButton",
+            {
+              name: 'TREEBUTTON',
+              width: 20, height: 20,
+              alignment: go.Spot.TopRight,
+              alignmentFocus: go.Spot.Center,
+              // customize the expander behavior to
+              // create children if the node has never been expanded
+              click: (e, obj) => {  // OBJ is the Button
+                var node = obj.part;  // get the Node containing this Button
+                if (node === null) return;
+                e.handled = true;
+                expandNode(node);
+              }
+            }
+          )  // end TreeExpanderButton
+        );  // end Node
+
+        // create the model with a root node data
+       const baseIdea = unescape('{{ base_idea|escapejs }}'); // Get the base_idea from the context
+        myDiagram.model = new go.TreeModel([
+          { key: 0, color: blues[0], everExpanded: false, text: baseIdea }
+        ]);
+
+      document.getElementById('zoomToFit').addEventListener('click', () => myDiagram.zoomToFit());
+
+      document.getElementById('expandAtRandom').addEventListener('click', () => expandAtRandom());
+    }
+
+    async function expandNode(node) {
+      var diagram = node.diagram;
+      diagram.startTransaction("CollapseExpandTree");
+      // this behavior is specific to this incrementalTree sample:
+      var data = node.data;
+      if (!data.everExpanded) {
+        // only create children once per node
+        diagram.model.setDataProperty(data, "everExpanded", true);
+        const clicked_word = node.data.text; // Get the text of the node from the data property
+        const increment_logic = '{{ increment_logic }}'; // get the increment_logic from the context
+
+        const response = await fetch(`/generate_ideas?clicked_word=${encodeURIComponent(clicked_word)}&increment_logic=${encodeURIComponent(increment_logic)}`);
+        const ideas = await response.json();
+        createSubTree(data, ideas.ideas);
+      }
+      // this behavior is generic for most expand/collapse tree buttons:
+      if (node.isTreeExpanded) {
+        diagram.commandHandler.collapseTree(node);
+      } else {
+        diagram.commandHandler.expandTree(node);
+      }
+      diagram.commitTransaction("CollapseExpandTree");
+      myDiagram.zoomToFit();
+    }
+
+    // This dynamically creates the immediate children for a node.
+    // The sample assumes that we have no idea of whether there are any children
+    // for a node until we look for them the first time, which happens
+    // upon the first tree-expand of a node.
+    function createSubTree(parentdata, ideas) {
+      var model = myDiagram.model;
+      var parent = myDiagram.findNodeForData(parentdata);
+
+      var degrees = 1;
+      var grandparent = parent.findTreeParentNode();
+      while (grandparent) {
+        degrees++;
+        grandparent = grandparent.findTreeParentNode();
+      }
+
+      for (var i = 0; i < ideas.length; i++) {
+        var childdata = {
+          key: model.nodeDataArray.length,
+          parent: parentdata.key,
+          rootdistance: degrees,
+          text: ideas[i] // set the text of the new node to the idea from the API
+        };
+        // add to model.nodeDataArray and create a Node
+        model.addNodeData(childdata);
+        // position the new child node close to the parent
+        var child = myDiagram.findNodeForData(childdata);
+        child.location = parent.location;
+      }
+    }
+
+    function expandAtRandom() {
+      var eligibleNodes = [];
+      myDiagram.nodes.each(n => {
+        if (!n.isTreeExpanded) eligibleNodes.push(n);
+      });
+      var node = eligibleNodes[Math.floor(Math.random() * (eligibleNodes.length))];
+      expandNode(node);
+    }
+    window.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>

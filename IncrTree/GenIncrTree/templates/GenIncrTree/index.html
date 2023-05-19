@@ -1,0 +1,19 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <link href="{% static 'GenIncrTree/css/bootstrap.min.css' %}" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+</head>
+<body>
+    <form action="" method="post">
+        {% csrf_token %}
+        <label for="base_idea">Idée de base :</label>
+        <input type="text" id="base_idea" name="base_idea" required><br><br>
+        <label for="increment_logic">Logique d'incrémentation :</label>
+        <input type="text" id="increment_logic" name="increment_logic" required><br><br>
+        <button type="submit">Générer l'arbre</button>
+    </form>
+</body>
+</html>
